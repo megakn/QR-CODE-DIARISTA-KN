@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<title>QR Diaristas · KN</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#052A3D">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="QR Diaristas">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+<style>
+  :root{
+    --navy-deep:#031C29;
+    --navy:#052A3D;
+    --navy-soft:#0B3A52;
+    --blue:#0E5C82;
+    --cyan:#28B4E8;
+    --gold:#F0B90B;
+    --gold-soft:#FFD866;
+    --ink:#EAF4F9;
+    --ink-dim:#9FB8C7;
+    --ink-faint:#6E8898;
+    --line:rgba(234,244,249,0.08);
+    --panel:#08334A;
+    --panel-hi:#0C3F59;
+    --radius:16px;
+    --font-display:'Space Grotesk',system-ui,sans-serif;
+    --font-body:'Inter',system-ui,-apple-system,sans-serif;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    font-family:var(--font-body);
+    background:
+      radial-gradient(1200px 600px at 15% -10%, rgba(40,180,232,0.14), transparent 60%),
+      radial-gradient(900px 500px at 110% 0%, rgba(240,185,11,0.08), transparent 55%),
+      var(--navy-deep);
+    color:var(--ink);
+    min-height:100vh;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  header{
+    padding:22px 20px 18px;
+    position:sticky; top:0; z-index:20;
+    background:rgba(3,28,41,0.82);
+    backdrop-filter:blur(14px) saturate(140%);
+    -webkit-backdrop-filter:blur(14px) saturate(140%);
+    border-bottom:1px solid var(--line);
+  }
+  .brand{display:flex;align-items:center;gap:11px;}
+  .brand .mark{
+    width:38px;height:38px;border-radius:11px;
+    background:linear-gradient(135deg,var(--cyan),var(--blue));
+    display:flex;align-items:center;justify-content:center;
+    font-family:var(--font-display);font-weight:700;font-size:15px;color:var(--navy-deep);
+    box-shadow:0 4px 14px rgba(40,180,232,0.35);
+    flex-shrink:0;
+  }
+  header h1{
+    margin:0;font-family:var(--font-display);font-weight:700;
+    font-size:18px;letter-spacing:-0.01em;line-height:1.1;
+  }
+  header .sub{font-size:12.5px;color:var(--ink-dim);margin-top:2px;letter-spacing:.01em;}
+
+  main{padding:18px 18px 90px;max-width:520px;margin:0 auto;}
+
+  .toolbar{display:flex;gap:9px;margin:18px 0 12px;}
+  .field{
+    flex:1;position:relative;
+  }
+  .field input[type=date],
+  .field input[type=text]{
+    width:100%;background:var(--panel);border:1px solid var(--line);color:var(--ink);
+    padding:12px 14px;border-radius:12px;font-size:14px;font-family:var(--font-body);
+    transition:border-color .15s, background .15s;
+  }
+  .field input:focus{outline:none;border-color:var(--cyan);background:var(--panel-hi);}
+  .field input::placeholder{color:var(--ink-faint);}
+  .btn-icon{
+    width:46px;flex-shrink:0;background:var(--panel);border:1px solid var(--line);color:var(--ink);
+    border-radius:12px;cursor:pointer;font-size:17px;display:flex;align-items:center;justify-content:center;
+    transition:transform .15s, background .15s;
+  }
+  .btn-icon:active{transform:scale(0.92);background:var(--panel-hi);}
+
+  .summary{
+    display:flex;align-items:center;gap:10px;margin:4px 2px 18px;
+    font-size:12.5px;color:var(--ink-dim);
+  }
+  .summary .count{font-family:var(--font-display);font-weight:700;color:var(--ink);font-size:15px;}
+  .pill{font-size:10.5px;padding:3px 9px;border-radius:20px;font-weight:600;letter-spacing:.02em;border:1px solid transparent;}
+  .pill.meli{background:rgba(40,180,232,.13);color:var(--cyan);border-color:rgba(40,180,232,.25);}
+  .pill.kn{background:rgba(240,185,11,.13);color:var(--gold-soft);border-color:rgba(240,185,11,.25);}
+
+  .list{display:flex;flex-direction:column;gap:8px;}
+  .card{
+    background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    padding:13px 14px;display:flex;align-items:center;gap:12px;cursor:pointer;
+    transition:background .15s, border-color .15s, transform .1s;
+    position:relative; overflow:hidden;
+  }
+  .card::before{
+    content:'';position:absolute;left:0;top:0;bottom:0;width:3px;
+    background:var(--company-color, var(--ink-faint));opacity:.85;
+  }
+  .card:active{transform:scale(0.985);background:var(--panel-hi);}
+  .avatar{
+    width:40px;height:40px;border-radius:11px;flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;
+    font-family:var(--font-display);font-weight:700;font-size:14px;
+    background:var(--company-color, var(--blue));color:var(--navy-deep);
+  }
+  .info{flex:1;min-width:0;}
+  .name{font-weight:600;font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:-0.003em;}
+  .meta{font-size:12px;color:var(--ink-dim);margin-top:2px;font-variant-numeric:tabular-nums;}
+  .chev{color:var(--ink-faint);font-size:20px;font-weight:300;flex-shrink:0;}
+
+  .empty{
+    text-align:center;color:var(--ink-dim);padding:70px 24px;font-size:14px;line-height:1.65;
+  }
+  .empty .ic{font-size:34px;margin-bottom:14px;opacity:.6;}
+  .empty b{color:var(--ink);}
+
+  .loading{text-align:center;color:var(--ink-dim);padding:50px;font-size:13.5px;}
+  .loading .spin{
+    width:22px;height:22px;border-radius:50%;border:2.5px solid var(--line);border-top-color:var(--cyan);
+    margin:0 auto 14px;animation:spin .8s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  .install-tip{
+    background:rgba(240,185,11,.09);border:1px solid rgba(240,185,11,.22);color:var(--gold-soft);
+    font-size:12px;padding:11px 13px;border-radius:12px;margin-bottom:16px;display:none;
+    line-height:1.5;
+  }
+  .install-tip.show{display:block;}
+
+  /* ===== QR Modal ===== */
+  .overlay{
+    position:fixed;inset:0;background:rgba(2,16,24,.88);backdrop-filter:blur(6px);
+    display:none;align-items:flex-end;justify-content:center;z-index:100;
+  }
+  .overlay.show{display:flex;}
+  @media (min-width:560px){ .overlay{align-items:center;} }
+
+  .sheet{
+    background:linear-gradient(180deg,#0A3C55,#062639);
+    border:1px solid var(--line);
+    border-radius:24px 24px 0 0;
+    padding:10px 24px 30px;
+    max-width:440px;width:100%;
+    animation:slideUp .28s cubic-bezier(.2,.9,.25,1);
+  }
+  @media (min-width:560px){ .sheet{border-radius:24px;padding-bottom:26px;} }
+  @keyframes slideUp{from{transform:translateY(24px);opacity:0;}to{transform:translateY(0);opacity:1;}}
+
+  .sheet-handle{width:36px;height:4px;background:var(--line);border-radius:4px;margin:8px auto 18px;}
+
+  .progress{text-align:center;font-size:11.5px;color:var(--ink-faint);letter-spacing:.04em;text-transform:uppercase;margin-bottom:4px;font-weight:600;}
+  .qname{font-family:var(--font-display);font-size:20px;font-weight:700;text-align:center;letter-spacing:-0.01em;margin-bottom:3px;}
+  .qmeta{font-size:12.5px;color:var(--ink-dim);text-align:center;margin-bottom:20px;}
+
+  .qrframe{
+    background:#fff;border-radius:20px;padding:20px;
+    display:flex;justify-content:center;margin-bottom:16px;
+    box-shadow:0 12px 32px rgba(0,0,0,.35);
+  }
+
+  .groot-tag{
+    text-align:center;font-size:13px;color:var(--ink-dim);margin-bottom:18px;
+    font-variant-numeric:tabular-nums;letter-spacing:.02em;
+  }
+  .groot-tag b{color:var(--gold-soft);font-family:var(--font-display);font-weight:700;letter-spacing:.03em;}
+
+  .hint{
+    background:rgba(234,244,249,.05);border:1px solid var(--line);
+    color:var(--ink-dim);font-size:12.5px;text-align:center;
+    padding:11px 14px;border-radius:12px;margin-bottom:20px;line-height:1.5;
+  }
+
+  .navrow{display:flex;gap:10px;}
+  .navbtn{
+    flex:1;padding:14px;border-radius:13px;border:1px solid var(--line);
+    background:rgba(234,244,249,.04);color:var(--ink);font-size:14px;font-weight:600;
+    cursor:pointer;transition:background .15s, transform .1s;font-family:var(--font-body);
+  }
+  .navbtn:active{transform:scale(0.97);}
+  .navbtn:disabled{opacity:.3;cursor:default;}
+  .navbtn:not(:disabled):active{background:rgba(234,244,249,.09);}
+  .navbtn.primary{
+    background:linear-gradient(135deg,var(--cyan),var(--blue));color:var(--navy-deep);border:none;
+  }
+  .closebtn{
+    width:100%;margin-top:10px;background:transparent;border:none;color:var(--ink-faint);
+    font-size:13px;padding:10px;cursor:pointer;font-family:var(--font-body);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="mark">KN</div>
+    <div>
+      <h1>QR Diaristas</h1>
+      <div class="sub">Bata o ponto dos diaristas do dia</div>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="install-tip" id="installTip">
+    &#9733; Toque no menu do navegador e escolha <b>"Adicionar à tela inicial"</b> para instalar este app no seu celular.
+  </div>
+
+  <div class="toolbar">
+    <div class="field"><input type="date" id="dataFiltro"></div>
+    <button class="btn-icon" id="btnRefresh" title="Atualizar">&#8635;</button>
+  </div>
+  <div class="toolbar">
+    <div class="field"><input type="text" id="busca" placeholder="Buscar por nome ou GROOT ID"></div>
+  </div>
+
+  <div class="summary" id="summary"></div>
+
+  <div class="list" id="lista">
+    <div class="loading"><div class="spin"></div>Carregando diaristas do dia&hellip;</div>
+  </div>
+</main>
+
+<div class="overlay" id="overlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="progress" id="mProgress"></div>
+    <div class="qname" id="mNome"></div>
+    <div class="qmeta" id="mMeta"></div>
+    <div class="qrframe"><div id="mQr"></div></div>
+    <div class="groot-tag">GROOT ID <b id="mGroot"></b></div>
+    <div class="hint">Apresente este código no terminal de ponto para registrar entrada ou saída.</div>
+    <div class="navrow">
+      <button class="navbtn" id="btnPrev">&#8592; Anterior</button>
+      <button class="navbtn primary" id="btnNext">Próximo &#8594;</button>
+    </div>
+    <button class="closebtn" id="btnClose">Fechar</button>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://cnpcsovjomonctbggbac.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_1lqP4jYYMR96Aq8DX-DSHA_JKcGESRt';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const COMPANY_COLOR = { MELI:'#28B4E8', KN:'#F0B90B' };
+
+let REGISTROS = [];
+let FILTRADOS = [];
+let filtroTexto = '';
+let currentIdx = -1;
+
+function todayISO(){
+  const d = new Date();
+  const tz = d.getTimezoneOffset();
+  const local = new Date(d.getTime() - tz*60000);
+  return local.toISOString().slice(0,10);
+}
+function fmtDataBR(iso){
+  if(!iso) return '';
+  const [y,m,d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+function iniciais(nome){
+  if(!nome) return '?';
+  const partes = nome.trim().split(/\s+/);
+  if(partes.length===1) return partes[0].slice(0,2).toUpperCase();
+  return (partes[0][0]+partes[partes.length-1][0]).toUpperCase();
+}
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function carregar(){
+  const data = document.getElementById('dataFiltro').value || todayISO();
+  const lista = document.getElementById('lista');
+  const summary = document.getElementById('summary');
+  lista.innerHTML = '<div class="loading"><div class="spin"></div>Carregando diaristas do dia&hellip;</div>';
+  summary.innerHTML = '';
+
+  try{
+    const { data: rows, error } = await sb
+      .from('historico_diarias')
+      .select('*')
+      .eq('data', data)
+      .order('nome', { ascending: true });
+
+    if(error) throw error;
+
+    const vistos = new Set();
+    REGISTROS = (rows||[]).filter(r=>{
+      const key = r.groot_id || r.cpf || r.nome;
+      if(vistos.has(key)) return false;
+      vistos.add(key);
+      return true;
+    });
+
+    renderLista();
+  }catch(err){
+    lista.innerHTML = `<div class="empty"><div class="ic">&#9888;</div>Erro ao carregar dados do banco.<br><small>${escapeHtml((err && err.message) || err)}</small></div>`;
+  }
+}
+
+function renderLista(){
+  const lista = document.getElementById('lista');
+  const summary = document.getElementById('summary');
+  const q = filtroTexto.trim().toLowerCase();
+
+  FILTRADOS = REGISTROS.filter(r=>{
+    if(!q) return true;
+    return (r.nome||'').toLowerCase().includes(q) || (r.groot_id||'').toLowerCase().includes(q);
+  });
+
+  const totalMeli = REGISTROS.filter(r=>r.empresa==='MELI').length;
+  const totalKn = REGISTROS.filter(r=>r.empresa==='KN').length;
+  summary.innerHTML = `<span class="count">${REGISTROS.length}</span> diaristas hoje <span class="pill meli">MELI ${totalMeli}</span><span class="pill kn">KN ${totalKn}</span>`;
+
+  if(FILTRADOS.length===0){
+    lista.innerHTML = `<div class="empty"><div class="ic">&#9679;&#9679;&#9679;</div><b>Nenhum diarista lançado</b><br>nesta data. Verifique o lançamento no<br>Controle de Diaristas.</div>`;
+    return;
+  }
+
+  lista.innerHTML = FILTRADOS.map((r,idx)=>{
+    const color = COMPANY_COLOR[r.empresa] || 'var(--ink-faint)';
+    return `
+    <div class="card" style="--company-color:${color}" data-idx="${idx}">
+      <div class="avatar" style="--company-color:${color}">${iniciais(r.nome)}</div>
+      <div class="info">
+        <div class="name">${escapeHtml(r.nome||'-')}</div>
+        <div class="meta">GROOT ${escapeHtml(r.groot_id||'-')} &nbsp;·&nbsp; ${escapeHtml(r.turno||'-')}${r.empresa?' &nbsp;·&nbsp; '+escapeHtml(r.empresa):''}</div>
+      </div>
+      <div class="chev">&#8250;</div>
+    </div>`;
+  }).join('');
+
+  lista.querySelectorAll('.card').forEach(el=>{
+    el.addEventListener('click', ()=> abrirQr(parseInt(el.dataset.idx)));
+  });
+}
+
+function abrirQr(idx){
+  const r = FILTRADOS[idx];
+  if(!r) return;
+  if(!r.groot_id){
+    alert('Este diarista não possui GROOT ID cadastrado. Complete o cadastro no Banco de Diaristas primeiro.');
+    return;
+  }
+  currentIdx = idx;
+  renderQr();
+  document.getElementById('overlay').classList.add('show');
+}
+
+function renderQr(){
+  const r = FILTRADOS[currentIdx];
+  if(!r) return;
+  document.getElementById('mProgress').textContent = `${currentIdx+1} de ${FILTRADOS.length}`;
+  document.getElementById('mNome').textContent = r.nome || '-';
+  document.getElementById('mMeta').textContent = `${r.turno||'-'} · ${r.empresa||'-'} · ${fmtDataBR(r.data)}`;
+  document.getElementById('mGroot').textContent = r.groot_id;
+  const qbox = document.getElementById('mQr');
+  qbox.innerHTML = '';
+  new QRCode(qbox, { text: r.groot_id, width: 190, height: 190, colorDark:'#031C29', colorLight:'#ffffff' });
+
+  document.getElementById('btnPrev').disabled = currentIdx<=0;
+  const btnNext = document.getElementById('btnNext');
+  if(currentIdx>=FILTRADOS.length-1){
+    btnNext.textContent = 'Concluir';
+    btnNext.onclick = fecharModal;
+  }else{
+    btnNext.innerHTML = 'Próximo &#8594;';
+    btnNext.onclick = ()=>{ currentIdx++; renderQr(); };
+  }
+}
+
+function fecharModal(){
+  document.getElementById('overlay').classList.remove('show');
+}
+
+document.getElementById('btnPrev').addEventListener('click', ()=>{
+  if(currentIdx>0){ currentIdx--; renderQr(); }
+});
+document.getElementById('btnClose').addEventListener('click', fecharModal);
+document.getElementById('overlay').addEventListener('click', (e)=>{
+  if(e.target.id==='overlay') fecharModal();
+});
+
+document.getElementById('busca').addEventListener('input', (e)=>{
+  filtroTexto = e.target.value;
+  renderLista();
+});
+document.getElementById('btnRefresh').addEventListener('click', carregar);
+document.getElementById('dataFiltro').addEventListener('change', carregar);
+
+if(!window.matchMedia('(display-mode: standalone)').matches){
+  document.getElementById('installTip').classList.add('show');
+}
+
+document.getElementById('dataFiltro').value = todayISO();
+carregar();
+setInterval(carregar, 30000);
+
+// Registra o service worker — necessário para o Android reconhecer
+// este app como instalável de verdade (modo tela cheia, sem barra do navegador).
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('sw.js').catch(()=>{});
+  });
+}
+</script>
+</body>
+</html>

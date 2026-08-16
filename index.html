@@ -506,12 +506,11 @@ function renderLista(){
 
   // Atualiza contadores das abas
   document.getElementById('nEntrada').textContent = pendentesEntrada.length;
-  document.getElementById('nSaida').textContent = aguardandoSaida.length;
 
   const saidaLiberada = comGroot.length>0 && pendentesEntrada.length===0;
   const tabSaida = document.querySelector('.modetab[data-m="saida"]');
   tabSaida.innerHTML = saidaLiberada
-    ? `Saída <span class="n" id="nSaida">${aguardandoSaida.length}</span>`
+    ? `Saída <span class="n">${aguardandoSaida.length}</span>`
     : `&#128274; Saída`;
 
   const totalMeli = REGISTROS.filter(r=>r.empresa==='MELI').length;
@@ -648,19 +647,25 @@ async function confirmarBatida(registro, tipo){
   const campo = tipo==='entrada' ? 'qr_entrada_batida_em' : 'qr_saida_batida_em';
   const agora = new Date().toISOString();
 
+  // Parte 1: salvar no banco. Só aqui mostramos erro de "não foi possível salvar".
   try{
     const { error } = await sb
       .from('historico_diarias')
       .update({ [campo]: agora })
       .eq('id', registro.id);
     if(error) throw error;
+  }catch(err){
+    alert('Não foi possível salvar. Verifique a conexão e tente novamente.\n' + ((err && err.message) || err));
+    btnConfirm.disabled = false;
+    renderQr();
+    return;
+  }
 
+  // Parte 2: já salvou com sucesso — atualiza a tela. Erro aqui não deve
+  // ser confundido com falha ao salvar (o dado já está seguro no banco).
+  try{
     REGISTROS = REGISTROS.map(r=> r.id===registro.id ? {...r, [campo]: agora} : r);
-
     playBeep();
-
-    // A pessoa confirmada sai da lista atual (Entrada ou Saída) automaticamente.
-    // Ajusta o índice para continuar mostrando o próximo pendente na sequência.
     renderLista();
     const label = tipo==='entrada' ? 'Entrada registrada' : 'Saída registrada';
     if(FILTRADOS.length===0){
@@ -673,9 +678,10 @@ async function confirmarBatida(registro, tipo){
       renderQr();
     }
   }catch(err){
-    alert('Não foi possível salvar. Verifique a conexão e tente novamente.\n' + ((err && err.message) || err));
-    btnConfirm.disabled = false;
-    renderQr();
+    // O registro já foi salvo com sucesso; só a atualização da tela falhou.
+    // Recarrega tudo do banco para garantir que a tela volte a ficar consistente.
+    console.error('Erro ao atualizar a tela após salvar:', err);
+    carregar();
   }
 }
 
@@ -710,7 +716,12 @@ if(!window.matchMedia('(display-mode: standalone)').matches){
 
 document.getElementById('dataFiltro').value = todayISO();
 carregar();
-setInterval(carregar, 30000);
+// Pausa a atualização automática enquanto o QR está aberto na tela, para não
+// embaralhar a fila de confirmação no meio do processo de bater ponto.
+setInterval(()=>{
+  const modalAberto = document.getElementById('overlay').classList.contains('show');
+  if(!modalAberto) carregar();
+}, 30000);
 
 // Registra o service worker — necessário para o Android reconhecer
 // este app como instalável de verdade (modo tela cheia, sem barra do navegador).

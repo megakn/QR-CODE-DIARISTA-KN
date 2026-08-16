@@ -307,13 +307,41 @@ async function carregar(){
     if(error) throw error;
 
     const vistos = new Set();
-    REGISTROS = (rows||[]).filter(r=>{
-      const key = r.groot_id || r.cpf || r.nome;
+    let registros = (rows||[]).filter(r=>{
+      const key = r.diarista_id || r.groot_id || r.cpf || r.nome;
       if(vistos.has(key)) return false;
       vistos.add(key);
       return true;
     });
 
+    // Busca os dados mais atuais de cada diarista (nome, GROOT ID, empresa, cargo)
+    // direto do Banco de Diaristas, para não depender da "foto" salva no lançamento
+    // do dia — assim, se o GROOT ID for completado depois, já aparece atualizado aqui.
+    const ids = [...new Set(registros.map(r=>r.diarista_id).filter(Boolean))];
+    if(ids.length){
+      const { data: diaristasAtuais, error: errDiaristas } = await sb
+        .from('diaristas')
+        .select('id, nome, groot_id, empresa, cargo, cpf')
+        .in('id', ids);
+      if(!errDiaristas && diaristasAtuais){
+        const mapa = {};
+        diaristasAtuais.forEach(d=>{ mapa[d.id] = d; });
+        registros = registros.map(r=>{
+          const atual = r.diarista_id ? mapa[r.diarista_id] : null;
+          if(!atual) return r;
+          return {
+            ...r,
+            nome: atual.nome || r.nome,
+            groot_id: atual.groot_id || r.groot_id,
+            empresa: atual.empresa || r.empresa,
+            cargo: atual.cargo || r.cargo,
+            cpf: atual.cpf || r.cpf,
+          };
+        });
+      }
+    }
+
+    REGISTROS = registros;
     renderLista();
   }catch(err){
     lista.innerHTML = `<div class="empty"><div class="ic">&#9888;</div>Erro ao carregar dados do banco.<br><small>${escapeHtml((err && err.message) || err)}</small></div>`;

@@ -362,6 +362,14 @@ function iniciais(nome){
   if(partes.length===1) return partes[0].slice(0,2).toUpperCase();
   return (partes[0][0]+partes[partes.length-1][0]).toUpperCase();
 }
+function nomeCurto(nome){
+  if(!nome) return '';
+  const todas = nome.trim().split(/\s+/);
+  // Ignora partes abreviadas (ex: "D", "S", "D.") — fala só nomes por extenso
+  const completas = todas.filter(p=>p.replace(/\./g,'').length>1);
+  const escolhidas = (completas.length ? completas : todas).slice(0,2);
+  return escolhidas.join(' ');
+}
 function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
@@ -622,7 +630,13 @@ function renderQr(){
     btnNext.onclick = fecharModal;
   }else{
     btnNext.innerHTML = 'Próximo &#8594;';
-    btnNext.onclick = ()=>{ currentIdx++; playBeep(); falar('Próximo'); renderQr(); };
+    btnNext.onclick = ()=>{
+      currentIdx++;
+      playBeep();
+      const prox = FILTRADOS[currentIdx];
+      falar(prox ? nomeCurto(prox.nome) : 'Próximo');
+      renderQr();
+    };
   }
 }
 
@@ -644,16 +658,18 @@ async function confirmarBatida(registro, tipo){
     REGISTROS = REGISTROS.map(r=> r.id===registro.id ? {...r, [campo]: agora} : r);
 
     playBeep();
-    falar(tipo==='entrada' ? 'Entrada registrada' : 'Saída registrada');
 
     // A pessoa confirmada sai da lista atual (Entrada ou Saída) automaticamente.
     // Ajusta o índice para continuar mostrando o próximo pendente na sequência.
     renderLista();
+    const label = tipo==='entrada' ? 'Entrada registrada' : 'Saída registrada';
     if(FILTRADOS.length===0){
-      setTimeout(()=> falar('Tudo concluído'), 900);
+      falar(label + '. Tudo concluído.');
       fecharModal();
     }else{
       if(currentIdx>=FILTRADOS.length) currentIdx = FILTRADOS.length-1;
+      const prox = FILTRADOS[currentIdx];
+      falar(`${label}. Próximo, ${nomeCurto(prox.nome)}.`);
       renderQr();
     }
   }catch(err){
@@ -668,7 +684,13 @@ function fecharModal(){
 }
 
 document.getElementById('btnPrev').addEventListener('click', ()=>{
-  if(currentIdx>0){ currentIdx--; playBeep(); falar('Anterior'); renderQr(); }
+  if(currentIdx>0){
+    currentIdx--;
+    playBeep();
+    const ant = FILTRADOS[currentIdx];
+    falar(ant ? nomeCurto(ant.nome) : 'Anterior');
+    renderQr();
+  }
 });
 document.getElementById('btnClose').addEventListener('click', fecharModal);
 document.getElementById('overlay').addEventListener('click', (e)=>{

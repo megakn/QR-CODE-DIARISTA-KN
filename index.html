@@ -161,6 +161,18 @@
   .locked-panel .small{font-size:13px;line-height:1.6;}
   .locked-panel .n{color:var(--gold-soft);font-weight:700;}
 
+  .waiting-panel{
+    margin-top:18px;padding:14px 16px;border-radius:14px;
+    background:rgba(240,185,11,.07);border:1px solid rgba(240,185,11,.22);
+  }
+  .waiting-title{font-size:12.5px;font-weight:700;color:var(--gold-soft);margin-bottom:8px;}
+  .waiting-row{
+    display:flex;justify-content:space-between;gap:10px;padding:6px 0;
+    font-size:13px;color:var(--ink-dim);border-top:1px solid rgba(255,255,255,.06);
+  }
+  .waiting-row:first-of-type{border-top:none;}
+  .waiting-time{color:var(--ink-faint);font-size:12px;white-space:nowrap;}
+
   .empty{
     text-align:center;color:var(--ink-dim);padding:70px 24px;font-size:14px;line-height:1.65;
   }
@@ -339,10 +351,28 @@ let filtroTexto = '';
 let modo = 'entrada'; // 'entrada' ou 'saida'
 let currentIdx = -1;
 
+// Minutos de antecedência que uma pessoa pode bater o ponto antes do horário previsto do turno
+// dela (ex: 15 = pode bater a partir de 15 min antes do horário).
+const TOLERANCIA_ANTECIPACAO_MIN = 15;
+
 function statusDe(r){
   if(!r.qr_entrada_batida_em) return 'pendente';
   if(!r.qr_saida_batida_em) return 'aguardando';
   return 'concluido';
+}
+
+// Compara a hora atual com o horário previsto (r.horario_entrada, formato "HH:MM") do turno da
+// pessoa, considerando a tolerância de antecedência. Se não houver horário cadastrado, libera
+// sempre (não trava quem não tem essa informação preenchida).
+function dentroDoHorario(r){
+  const hp = (r.horario_entrada||'').trim();
+  if(!hp || !/^\d{1,2}:\d{2}/.test(hp)) return true;
+  const [hh, mm] = hp.split(':').map(Number);
+  const agora = new Date();
+  const previsto = new Date(agora);
+  previsto.setHours(hh, mm, 0, 0);
+  previsto.setMinutes(previsto.getMinutes() - TOLERANCIA_ANTECIPACAO_MIN);
+  return agora >= previsto;
 }
 
 function todayISO(){
@@ -500,13 +530,19 @@ function renderLista(){
 
   // Considera apenas quem tem GROOT ID (só esses conseguem gerar QR)
   const comGroot = REGISTROS.filter(r=>r.groot_id);
-  const pendentesEntrada = comGroot.filter(r=>statusDe(r)==='pendente');
+  const todosPendentesEntrada = comGroot.filter(r=>statusDe(r)==='pendente');
+  // Só libera pra bater entrada quem já chegou no horário previsto do turno dela.
+  const pendentesEntrada = todosPendentesEntrada.filter(dentroDoHorario);
+  const aguardandoHorario = todosPendentesEntrada.filter(r=>!dentroDoHorario(r))
+    .sort((a,b)=>(a.horario_entrada||'').localeCompare(b.horario_entrada||''));
   const aguardandoSaida = comGroot.filter(r=>statusDe(r)==='aguardando');
   const concluidos = comGroot.filter(r=>statusDe(r)==='concluido');
 
   // Atualiza contadores das abas
   document.getElementById('nEntrada').textContent = pendentesEntrada.length;
 
+  // Saída libera assim que todo mundo que JÁ deveria ter chegado bateu a entrada — não trava
+  // esperando turnos futuros (ex: T3 às 22h) que ainda nem começaram.
   const saidaLiberada = comGroot.length>0 && pendentesEntrada.length===0;
   const tabSaida = document.querySelector('.modetab[data-m="saida"]');
   tabSaida.innerHTML = saidaLiberada
@@ -517,13 +553,13 @@ function renderLista(){
   const totalKn = REGISTROS.filter(r=>r.empresa==='KN').length;
   summary.innerHTML = `<span class="count">${REGISTROS.length}</span> diaristas hoje <span class="pill meli">MELI ${totalMeli}</span><span class="pill kn">KN ${totalKn}</span> <span style="color:var(--ink-faint)">· ${concluidos.length} concluídos</span>`;
 
-  // Modo SAÍDA travado até todas as entradas serem confirmadas
+  // Modo SAÍDA travado até todo mundo que já deveria ter chegado bater a entrada
   if(modo==='saida' && !saidaLiberada){
     lista.innerHTML = `
       <div class="locked-panel">
         <div class="ic">&#128274;</div>
         <div class="big">Saída ainda bloqueada</div>
-        <div class="small">Faltam <span class="n">${pendentesEntrada.length}</span> diarista(s) bater a <b>entrada</b> antes de liberar a saída.<br>Termine a aba Entrada primeiro.</div>
+        <div class="small">Faltam <span class="n">${pendentesEntrada.length}</span> diarista(s) já no horário bater a <b>entrada</b> antes de liberar a saída.<br>Termine a aba Entrada primeiro.</div>
       </div>`;
     FILTRADOS = [];
     return;
@@ -536,11 +572,23 @@ function renderLista(){
     return (r.nome||'').toLowerCase().includes(q) || (r.groot_id||'').toLowerCase().includes(q);
   });
 
+  const aguardandoHtml = (modo==='entrada' && aguardandoHorario.length)
+    ? `<div class="waiting-panel">
+        <div class="waiting-title">&#8987; Aguardando horário (${aguardandoHorario.length})</div>
+        ${aguardandoHorario.map(r=>`<div class="waiting-row">
+            <span>${escapeHtml(r.nome||'-')}</span>
+            <span class="waiting-time">${escapeHtml(r.turno||'-')} · libera às ${escapeHtml(r.horario_entrada||'-')}</span>
+          </div>`).join('')}
+      </div>`
+    : '';
+
   if(FILTRADOS.length===0){
     const msg = modo==='entrada'
-      ? '<b>Todas as entradas de hoje já foram batidas.</b><br>Vá para a aba Saída quando for a hora.'
+      ? (aguardandoHorario.length
+          ? 'Ninguém no horário de bater entrada agora.'
+          : '<b>Todas as entradas de hoje já foram batidas.</b><br>Vá para a aba Saída quando for a hora.')
       : '<b>Todas as saídas já foram batidas.</b><br>Jornada do dia concluída para todos.';
-    lista.innerHTML = `<div class="empty"><div class="ic">&#10003;</div>${msg}</div>`;
+    lista.innerHTML = `<div class="empty"><div class="ic">${aguardandoHorario.length?'&#8987;':'&#10003;'}</div>${msg}</div>${aguardandoHtml}`;
     return;
   }
 
@@ -555,7 +603,7 @@ function renderLista(){
       </div>
       <div class="chev">&#8250;</div>
     </div>`;
-  }).join('');
+  }).join('') + aguardandoHtml;
 
   lista.querySelectorAll('.card').forEach(el=>{
     el.addEventListener('click', ()=> abrirQr(parseInt(el.dataset.idx)));

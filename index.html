@@ -167,11 +167,29 @@
   }
   .waiting-title{font-size:12.5px;font-weight:700;color:var(--gold-soft);margin-bottom:8px;}
   .waiting-row{
-    display:flex;justify-content:space-between;gap:10px;padding:6px 0;
+    display:flex;justify-content:space-between;gap:10px;padding:6px 0;flex-wrap:wrap;
     font-size:13px;color:var(--ink-dim);border-top:1px solid rgba(255,255,255,.06);
   }
   .waiting-row:first-of-type{border-top:none;}
-  .waiting-time{color:var(--ink-faint);font-size:12px;white-space:nowrap;}
+  .waiting-row span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1 1 auto;}
+  .waiting-time{color:var(--ink-faint);font-size:12px;white-space:nowrap;flex:0 0 auto;}
+
+  .todos-badge{
+    display:inline-block;margin-top:5px;padding:2px 9px;border-radius:8px;
+    font-size:11px;font-weight:700;
+  }
+  .todos-badge.pendente{background:rgba(40,180,232,.15);color:var(--cyan);}
+  .todos-badge.aguardando-horario{background:rgba(240,185,11,.15);color:var(--gold-soft);}
+  .todos-badge.aguardando{background:rgba(240,185,11,.15);color:var(--gold-soft);}
+  .todos-badge.concluido{background:rgba(60,200,120,.15);color:#3ecf8e;}
+  .todos-badge.semgroot{background:rgba(255,255,255,.08);color:var(--ink-faint);}
+
+  .btn-desfazer{
+    flex:0 0 auto;align-self:center;padding:7px 12px;border-radius:10px;
+    background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);
+    color:var(--ink-dim);font-size:12px;font-weight:600;cursor:pointer;
+  }
+  .btn-desfazer:active{background:rgba(255,255,255,.12);}
 
   .empty{
     text-align:center;color:var(--ink-dim);padding:70px 24px;font-size:14px;line-height:1.65;
@@ -310,6 +328,7 @@
   <div class="modetabs" id="modeTabs">
     <div class="modetab active" data-m="entrada">Entrada <span class="n" id="nEntrada">0</span></div>
     <div class="modetab" data-m="saida">Saída <span class="n" id="nSaida">0</span></div>
+    <div class="modetab" data-m="todos">Todos <span class="n" id="nTodos">0</span></div>
   </div>
 
   <div class="summary" id="summary"></div>
@@ -552,6 +571,54 @@ function renderLista(){
   const totalMeli = REGISTROS.filter(r=>r.empresa==='MELI').length;
   const totalKn = REGISTROS.filter(r=>r.empresa==='KN').length;
   summary.innerHTML = `<span class="count">${REGISTROS.length}</span> diaristas hoje <span class="pill meli">MELI ${totalMeli}</span><span class="pill kn">KN ${totalKn}</span> <span style="color:var(--ink-faint)">· ${concluidos.length} concluídos</span>`;
+  document.getElementById('nTodos').textContent = REGISTROS.length;
+
+  // Aba TODOS: lista corrida de todo mundo lançado no dia (com ou sem GROOT ID), pra conferir
+  // se subiu todo mundo — não depende de horário nem trava esperando nada. Cada linha mostra o
+  // status atual e, se já foi batido, um botão "Desfazer" pra voltar pra pendente (útil pra
+  // corrigir teste/engano sem precisar mexer direto no banco).
+  if(modo==='todos'){
+    const todosOrdenados = [...REGISTROS].sort((a,b)=>(a.nome||'').localeCompare(b.nome||''));
+    FILTRADOS = todosOrdenados.filter(r=>{
+      if(!q) return true;
+      return (r.nome||'').toLowerCase().includes(q) || (r.groot_id||'').toLowerCase().includes(q);
+    });
+    if(FILTRADOS.length===0){
+      lista.innerHTML = `<div class="empty"><div class="ic">&#128269;</div>Nenhum diarista encontrado.</div>`;
+      return;
+    }
+    const statusInfo = r=>{
+      if(!r.groot_id) return {label:'Sem GROOT ID', cls:'todos-badge semgroot'};
+      const st = statusDe(r);
+      if(st==='pendente') return dentroDoHorario(r)
+        ? {label:'Pendente entrada', cls:'todos-badge pendente'}
+        : {label:'Aguardando horário', cls:'todos-badge aguardando-horario'};
+      if(st==='aguardando') return {label:'Aguardando saída', cls:'todos-badge aguardando'};
+      return {label:'Concluído', cls:'todos-badge concluido'};
+    };
+    lista.innerHTML = FILTRADOS.map((r,idx)=>{
+      const color = COMPANY_COLOR[r.empresa] || 'var(--ink-faint)';
+      const info = statusInfo(r);
+      const podeDesfazer = r.qr_entrada_batida_em || r.qr_saida_batida_em;
+      return `
+      <div class="card" style="--company-color:${color}">
+        <div class="avatar" style="--company-color:${color}">${iniciais(r.nome)}</div>
+        <div class="info">
+          <div class="name">${escapeHtml(r.nome||'-')}</div>
+          <div class="meta">GROOT ${escapeHtml(r.groot_id||'-')} &nbsp;·&nbsp; ${escapeHtml(r.turno||'-')}${r.horario_entrada?' &nbsp;·&nbsp; '+escapeHtml(r.horario_entrada):''}${r.empresa?' &nbsp;·&nbsp; '+escapeHtml(r.empresa):''}</div>
+          <span class="${info.cls}">${info.label}</span>
+        </div>
+        ${podeDesfazer ? `<button class="btn-desfazer" data-idx="${idx}">Desfazer</button>` : ''}
+      </div>`;
+    }).join('');
+    lista.querySelectorAll('.btn-desfazer').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        desfazerBatida(FILTRADOS[parseInt(btn.dataset.idx)]);
+      });
+    });
+    return;
+  }
 
   // Modo SAÍDA travado até todo mundo que já deveria ter chegado bater a entrada
   if(modo==='saida' && !saidaLiberada){
@@ -735,6 +802,29 @@ async function confirmarBatida(registro, tipo){
 
 function fecharModal(){
   document.getElementById('overlay').classList.remove('show');
+}
+
+// Zera as batidas (entrada e/ou saída) de um diarista, voltando ele pra lista de "pendente
+// entrada". Usa isso pra desfazer um teste ou um clique errado — pede confirmação porque apaga
+// o horário registrado.
+async function desfazerBatida(registro){
+  if(!registro) return;
+  const jaTem = [];
+  if(registro.qr_entrada_batida_em) jaTem.push('entrada');
+  if(registro.qr_saida_batida_em) jaTem.push('saída');
+  const ok = confirm(`Desfazer a ${jaTem.join(' e ')} de ${registro.nome}?\nEla volta pra lista de pendente entrada.`);
+  if(!ok) return;
+  try{
+    const { error } = await sb
+      .from('historico_diarias')
+      .update({ qr_entrada_batida_em: null, qr_saida_batida_em: null })
+      .eq('id', registro.id);
+    if(error) throw error;
+    REGISTROS = REGISTROS.map(r=> r.id===registro.id ? {...r, qr_entrada_batida_em:null, qr_saida_batida_em:null} : r);
+    renderLista();
+  }catch(err){
+    alert('Não foi possível desfazer. Verifique a conexão e tente novamente.\n' + ((err && err.message) || err));
+  }
 }
 
 document.getElementById('btnPrev').addEventListener('click', ()=>{
